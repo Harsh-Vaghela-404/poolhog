@@ -1,0 +1,15 @@
+{
+  "name": "poolhog",
+  "version": "0.0.1",
+  "description": "Live visibility into who is holding your database connection pool, starting with Postgres.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.0",
+    "typescript": "^7.0.2"
+  }
+}
