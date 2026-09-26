@@ -6,10 +6,17 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test": "jest"
   },
   "devDependencies": {
+    "@jest/globals": "^30.5.2",
+    "@swc/core": "^1.16.2",
+    "@swc/jest": "^0.2.39",
+    "@tsconfig/node20": "^20.1.10",
+    "@types/jest": "^30.0.0",
     "@types/node": "^26.5.0",
+    "jest": "^30.5.2",
     "typescript": "^7.0.2"
   }
 }

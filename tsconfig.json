@@ -9,7 +9,7 @@
     "declaration": true,
     "sourceMap": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
   },
-  "include": ["src"]
+  "include": ["src/**/*.ts"]
 }
