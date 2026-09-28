@@ -1,5 +1,5 @@
 import {describe, test, expect} from '@jest/globals'
-import {sum} from '../src/index';
+import {sum} from '../src/index.ts';
 
 describe('Sum Function', ()=>{
     test('Return correct value', ()=>{

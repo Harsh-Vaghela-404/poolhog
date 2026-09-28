@@ -1,5 +1,5 @@
 import { describe, test, expect } from "@jest/globals";
-import {createRegistry } from '../src/registry';
+import {createRegistry } from '../src/registry.ts';
 
 
 

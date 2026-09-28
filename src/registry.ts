@@ -1,4 +1,4 @@
-import {RegistryEntry} from './types.ts'
+import {RegistryEntry} from './types.js'
 
 
 export function createRegistry(){
