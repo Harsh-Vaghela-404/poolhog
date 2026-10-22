@@ -13,3 +13,8 @@ export type LeakReport = {
 export type Logger = {
     warn(message: string, meta? : Record<string, unknown>): void;
 }
+
+export type PoolhogOptions = {
+    threshold: number;
+    logger?: Logger;
+}

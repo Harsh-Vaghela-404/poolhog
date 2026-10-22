@@ -16,7 +16,9 @@
     "@tsconfig/node20": "^20.1.10",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.5.0",
+    "@types/pg": "^8.23.1",
     "jest": "^30.5.2",
+    "pg": "^8.23.1",
     "typescript": "^7.0.2"
   }
 }
