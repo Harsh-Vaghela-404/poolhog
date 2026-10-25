@@ -6,26 +6,9 @@ When a connection is held longer than you expect, poolhog logs the full stack tr
 
 ## Why this exists
 
-One time, a connection pool at work got completely exhausted. Every connection was checked out, one query wasn't timing out, and the only fix in the moment was restarting RDS. Nobody could tell which piece of code was holding onto those connections.
+One time, a connection pool at work got completely exhausted. Every connection was checked out and one query wasn't timing out. Killing that query by its backend pid clears the pool, but nobody could tell which piece of code had issued it.
 
-The obvious fallback is Postgres's own `pg_stat_activity`, but it doesn't close that gap. It can't tell a leaked connection apart from a healthy idle one; both just show up as `idle`. And it shows you SQL text, not which line of your app issued it.
-
-## Prior art
-
-The idea of capturing a stack trace at checkout and reporting a connection that isn't returned is not new:
-
-- **Java, HikariCP:** [`leakDetectionThreshold`](https://github.com/brettwooldridge/HikariCP) is the amount of time a connection can be out of the pool before a message is logged about a possible leak. It is off by default (`0`), and the lowest value that enables it is 2000 ms.
-- **Java, c3p0:** [`debugUnreturnedConnectionStackTraces`](https://www.mchange.com/projects/c3p0/) captures a stack trace at every checkout and logs it when a connection outlives `unreturnedConnectionTimeout`, "revealing where a Connection was checked out that was not checked in promptly". Unlike poolhog, c3p0 destroys the timed-out connection, and its docs say the debug option is for debugging only because capturing the trace slows checkout.
-- **Python, SQLAlchemy:** [`AssertionPool`](https://github.com/sqlalchemy/sqlalchemy/blob/main/lib/sqlalchemy/pool/impl.py) records a traceback of the current checkout and includes it in the error when a second connection is requested. It is a debugging aid for "only one connection at a time" and has no time threshold.
-
-I found nothing reusable for Node. `node-postgres` has no built-in equivalent, and one search of npm and the web turned up no package that does this.
-
-Requests for this keep showing up. Two examples:
-
-- [Metabase #47981](https://github.com/metabase/metabase/issues/47981) (opened September 2024, closed November 2024) asked for c3p0's `debugUnreturnedConnectionStackTraces` to be added to the product so the team could investigate ongoing connection pool problems.
-- [httpcore #508](https://github.com/encode/httpcore/issues/508) (opened February 2022, closed June 2025) asked for connection-pool debug logs and tracing: requests waiting for connections, active connections, and connection open/close statistics.
-
-Poolhog exists because the same need keeps getting reinvented per ecosystem, and I found nothing composable for Node.
+Postgres's own `pg_stat_activity` is where you get that pid, and it doesn't close the gap. It can't tell a leaked connection apart from a healthy idle one; both just show up as `idle`. And it shows you SQL text, not which line of your app issued it.
 
 ## Install
 
@@ -115,6 +98,23 @@ The note appears as `message` in the report's `meta`. Calling it on a connection
 - **The stack is the call site of the checkout.** It tells you who asked for the connection. It does not follow the connection through later `await` boundaries to decide who is "logically" responsible for it at the moment you read the report.
 - **Compatibility is lightly tested.** Poolhog is developed and tested against `pg` 8.23.1 (and checked by hand against a real Postgres 16). The peer range is `^8.0.0`, but older 8.x releases have not been tested.
 - **Cost.** Each checkout captures one `Error` stack and starts one unref'd timer, so poolhog never keeps your process alive on its own. I haven't measured the overhead.
+
+## Prior art
+
+The idea of capturing a stack trace at checkout and reporting a connection that isn't returned is not new:
+
+- **Java, HikariCP:** [`leakDetectionThreshold`](https://github.com/brettwooldridge/HikariCP) is the amount of time a connection can be out of the pool before a message is logged about a possible leak. It is off by default (`0`), and the lowest value that enables it is 2000 ms.
+- **Java, c3p0:** [`debugUnreturnedConnectionStackTraces`](https://www.mchange.com/projects/c3p0/) captures a stack trace at every checkout and logs it when a connection outlives `unreturnedConnectionTimeout`, "revealing where a Connection was checked out that was not checked in promptly". Unlike poolhog, c3p0 destroys the timed-out connection, and its docs say the debug option is for debugging only because capturing the trace slows checkout.
+- **Python, SQLAlchemy:** [`AssertionPool`](https://github.com/sqlalchemy/sqlalchemy/blob/main/lib/sqlalchemy/pool/impl.py) records a traceback of the current checkout and includes it in the error when a second connection is requested. It is a debugging aid for "only one connection at a time" and has no time threshold.
+
+I found nothing reusable for Node. `node-postgres` has no built-in equivalent, and one search of npm and the web turned up no package that does this.
+
+Requests for this keep showing up. Two examples:
+
+- [Metabase #47981](https://github.com/metabase/metabase/issues/47981) (opened September 2024, closed November 2024) asked for c3p0's `debugUnreturnedConnectionStackTraces` to be added to the product so the team could investigate ongoing connection pool problems.
+- [httpcore #508](https://github.com/encode/httpcore/issues/508) (opened February 2022, closed June 2025) asked for connection-pool debug logs and tracing: requests waiting for connections, active connections, and connection open/close statistics.
+
+Poolhog exists because the same need keeps getting reinvented per ecosystem, and I found nothing composable for Node.
 
 ## How it works
 
