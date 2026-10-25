@@ -1,7 +1,7 @@
 {
   "name": "poolhog",
   "version": "0.0.1",
-  "description": "Live visibility into who is holding your database connection pool, starting with Postgres.",
+  "description": "A connection-pool leak detector for Node.js, starting with Postgres (pg).",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

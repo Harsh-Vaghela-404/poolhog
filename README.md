@@ -2,11 +2,11 @@
 
 A connection-pool leak detector for Node.js, starting with Postgres (`pg`).
 
-When a connection is held longer than you expect, poolhog logs **which code checked it out**: the full stack trace from the moment of checkout, and how long it has been held.
+When a connection is held longer than you expect, poolhog logs the full stack trace from the moment it was checked out, and how long it has been held.
 
 ## Why this exists
 
-One time, a connection pool at work got completely exhausted — every connection checked out, one query wasn't timing out, and the only fix in the moment was restarting RDS. Nobody could tell which piece of code was holding onto those connections.
+One time, a connection pool at work got completely exhausted. Every connection was checked out, one query wasn't timing out, and the only fix in the moment was restarting RDS. Nobody could tell which piece of code was holding onto those connections.
 
 The obvious fallback is Postgres's own `pg_stat_activity`, but it doesn't close that gap. It can't tell a leaked connection apart from a healthy idle one; both just show up as `idle`. And it shows you SQL text, not which line of your app issued it.
 
@@ -16,16 +16,16 @@ The idea of capturing a stack trace at checkout and reporting a connection that 
 
 - **Java, HikariCP:** [`leakDetectionThreshold`](https://github.com/brettwooldridge/HikariCP) is the amount of time a connection can be out of the pool before a message is logged about a possible leak. It is off by default (`0`), and the lowest value that enables it is 2000 ms.
 - **Java, c3p0:** [`debugUnreturnedConnectionStackTraces`](https://www.mchange.com/projects/c3p0/) captures a stack trace at every checkout and logs it when a connection outlives `unreturnedConnectionTimeout`, "revealing where a Connection was checked out that was not checked in promptly". Unlike poolhog, c3p0 destroys the timed-out connection, and its docs say the debug option is for debugging only because capturing the trace slows checkout.
-- **Python, SQLAlchemy:** [`AssertionPool`](https://github.com/sqlalchemy/sqlalchemy/blob/main/lib/sqlalchemy/pool/impl.py) records a traceback of the current checkout and includes it in the error when a second connection is requested. That is a debugging aid for "only one connection at a time", not a time-based leak detector.
+- **Python, SQLAlchemy:** [`AssertionPool`](https://github.com/sqlalchemy/sqlalchemy/blob/main/lib/sqlalchemy/pool/impl.py) records a traceback of the current checkout and includes it in the error when a second connection is requested. It is a debugging aid for "only one connection at a time" and has no time threshold.
 
-What I couldn't find is something reusable for Node. `node-postgres` has no built-in equivalent, and one search of npm and the web turned up no package that does this (not an exhaustive search).
+I found nothing reusable for Node. `node-postgres` has no built-in equivalent, and one search of npm and the web turned up no package that does this.
 
-The need keeps coming up. Two examples:
+Requests for this keep showing up. Two examples:
 
 - [Metabase #47981](https://github.com/metabase/metabase/issues/47981) (opened September 2024, closed November 2024) asked for c3p0's `debugUnreturnedConnectionStackTraces` to be added to the product so the team could investigate ongoing connection pool problems.
 - [httpcore #508](https://github.com/encode/httpcore/issues/508) (opened February 2022, closed June 2025) asked for connection-pool debug logs and tracing: requests waiting for connections, active connections, and connection open/close statistics.
 
-Poolhog exists because this keeps getting reinvented ecosystem by ecosystem and nothing composable is available for Node. It is not a claim that nothing like this has ever existed.
+Poolhog exists because the same need keeps getting reinvented per ecosystem, and I found nothing composable for Node.
 
 ## Install
 
@@ -68,7 +68,7 @@ Options:
 | `threshold` | yes      | Milliseconds a connection may be held before it is reported. There is no default (see below).   |
 | `logger`    | no       | Any object with a `warn(message, meta)` method (Winston, Pino, `console`, ...). Defaults to `console`. |
 
-**There is no default threshold, on purpose.** "How long is too long" depends heavily on your workload — a reporting service running long analytical queries has a very different normal than a request-handling API, and a guessed default means false positives. A monitor that cries wolf gets turned off. Not calling `attachPoolHog` is how detection stays off, the same way HikariCP's `leakDetectionThreshold` defaults to off.
+**There is no default threshold, on purpose.** "How long is too long" depends heavily on your workload (a reporting service running long analytical queries has a very different normal than a request-handling API), and a guessed default means false positives. A monitor that cries wolf gets turned off. Not calling `attachPoolHog` is how detection stays off, the same way HikariCP's `leakDetectionThreshold` defaults to off.
 
 ## What a report looks like
 
@@ -79,15 +79,11 @@ message: "Resource leak detected: connection held for 10002ms"
 meta:    { heldForMs: 10002, stack: "Error\n    at ... \n    at loadDashboard (/app/src/dashboard.js:42:25)\n    ..." }
 ```
 
-The first one or two frames of the stack are poolhog's and `pg-pool`'s own; the frames below them show the code that asked for the connection (`loadDashboard` above). That is the point: the report names your code, not just "a connection is busy".
+The first one or two frames of the stack are poolhog's and `pg-pool`'s own. The frames below them show the code that asked for the connection (`loadDashboard` above).
 
-Poolhog does not put an app or service name in the report. Your logger almost certainly already adds one (for example a Pino or Winston child logger), and guessing it a second time could only disagree with it.
+Poolhog does not put an app or service name in the report. Your logger usually adds one already (a Pino or Winston child logger, for example), so poolhog doesn't guess it.
 
-A few details:
-
-- The report is emitted once per checkout. If the connection is released later, that release still cleans up normally.
-- A connection that is released before the threshold produces nothing.
-- Poolhog only reports. It does not close or kill the connection.
+The report is emitted once per checkout. A release after that still cleans up normally, and a connection released before the threshold produces nothing. Poolhog only reports; it never closes or kills the connection.
 
 ## What it covers
 
@@ -98,11 +94,11 @@ A few details:
 | `pool.query(...)`                       | yes      |
 | `new pg.Client(...)` outside a pool     | no       |
 
-`pool.query()` matters most. It checks a client out and releases it for you, so you never hold a reference — but a query that never finishes still holds a connection the whole time. Poolhog reports those too, with the line that called `pool.query`.
+`pool.query()` checks a client out and releases it for you, so you never hold a reference. A query that never finishes still holds a connection the whole time, and poolhog reports it with the line that called `pool.query`.
 
 ### Adding a note to one checkout
 
-If a connection is expected to be held for a long time (a batch job, say), you can attach a note that shows up in the report if it does get reported:
+If a connection is expected to be held for a long time (a batch job, say), attach a note. It appears in the report if the connection does get reported:
 
 ```js
 const client = await pool.connect();
@@ -114,7 +110,7 @@ The note appears as `message` in the report's `meta`. Calling it on a connection
 ## Limitations
 
 - **Postgres via `pg` only.** Other drivers are not supported yet.
-- **Report only.** There is no UI or dashboard, and poolhog cannot close a leaked connection. If you need a fleet-wide view, ship the logs somewhere central, as you probably already do.
+- **Report only.** There is no UI or dashboard, and poolhog cannot close a leaked connection. For a fleet-wide view, send the logs to your central log store.
 - **One threshold per pool.** You can't override it for a single checkout yet.
 - **The stack is the call site of the checkout.** It tells you who asked for the connection. It does not follow the connection through later `await` boundaries to decide who is "logically" responsible for it at the moment you read the report.
 - **Compatibility is lightly tested.** Poolhog is developed and tested against `pg` 8.23.1 (and checked by hand against a real Postgres 16). The peer range is `^8.0.0`, but older 8.x releases have not been tested.
@@ -124,7 +120,7 @@ The note appears as `message` in the report's `meta`. Calling it on a connection
 
 Poolhog replaces `connect` on the pool you pass in, and wraps each client's `release`. At checkout it records the stack and the time, and starts a timer for the threshold. Releasing the client cancels the timer and forgets the checkout. If the timer fires first, the checkout is reported. The pool's `remove` event is used only as a cleanup safety net.
 
-The core (a registry, a per-checkout timer, a reporter) knows nothing about `pg`; the `pg`-specific part is one small adapter file. That keeps a second driver, or a Go port, a mechanical addition rather than a rewrite.
+The core (a registry, a per-checkout timer, a reporter) knows nothing about `pg`; the `pg`-specific part is one small adapter file. A second driver or a Go port should be mostly mechanical.
 
 ## Status
 
