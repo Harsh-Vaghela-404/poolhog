@@ -17,6 +17,11 @@ export function attachPoolHog(pool: Pool, options: PoolhogOptions): Pool {
         reporter.report(entry, Date.now() - entry.checkoutTime);
     });
 
+    pool.on('remove', (client: PoolClient) => {
+        timer.cancel(client);
+        registry.untrack(client);
+    });
+
     const originalConnect = pool.connect.bind(pool);
 
     pool.connect = (async (...args: any[]) => {
@@ -33,10 +38,22 @@ export function attachPoolHog(pool: Pool, options: PoolhogOptions): Pool {
         }
 
         const stack = new Error().stack ?? '';
-        const client: PoolClient = await (originalConnect as () => Promise<PoolClient>)();
+        const client: PoolClient & { poolhogNote?: (msg: string) => void } = await (
+            originalConnect as () => Promise<PoolClient>
+        )();
 
-        registry.track(client, { stack, checkoutTime: Date.now() });
+        registry.track(client, {
+            stack,
+            checkoutTime: Date.now(),
+        });
         timer.schedule(client);
+
+        client.poolhogNote = (message: string) => {
+            const activeEntry = registry.get(client);
+            if (activeEntry) {
+                activeEntry.message = message;
+            }
+        };
 
         const originalRelease = client.release;
         client.release = function (...releaseArgs: Parameters<typeof originalRelease>) {

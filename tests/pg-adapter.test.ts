@@ -1,10 +1,11 @@
 import { describe, expect, test, jest, beforeEach, afterEach } from '@jest/globals';
+import { EventEmitter } from 'node:events';
 import { Pool, PoolClient } from 'pg';
 import { attachPoolHog } from '../src/pg-adapter.ts';
 import { Logger } from '../src/types.ts';
 
 describe('attachPoolHog', () => {
-    let mockPool: Pool;
+    let mockPool: Pool & EventEmitter;
     let mockClient: PoolClient;
     let mockRealRelease: jest.Mock;
 
@@ -17,9 +18,10 @@ describe('attachPoolHog', () => {
             query: jest.fn(),
         } as unknown as PoolClient;
 
-        mockPool = {
+        const emitter = new EventEmitter();
+        mockPool = Object.assign(emitter, {
             connect: jest.fn<() => Promise<PoolClient>>().mockResolvedValue(mockClient),
-        } as unknown as Pool;
+        }) as unknown as Pool & EventEmitter;
     });
 
     afterEach(() => {
@@ -91,9 +93,10 @@ describe('attachPoolHog', () => {
     // 5. Callback passthrough emits a warning and delegates directly to originalConnect
     test('emits a warning and delegates directly when callback style connect is used', async () => {
         const mockLogger: Logger = { warn: jest.fn() };
-        const cbPool = {
+        const emitter = new EventEmitter();
+        const cbPool = Object.assign(emitter, {
             connect: jest.fn((cb: any) => cb(null, mockClient)),
-        } as unknown as Pool;
+        }) as unknown as Pool;
 
         attachPoolHog(cbPool, { threshold: 5000, logger: mockLogger });
 
@@ -121,5 +124,66 @@ describe('attachPoolHog', () => {
 
         jest.advanceTimersByTime(6000);
         expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+
+    // 7. Supports adding a poolhogNote to a checked-out client for reporting
+    test('includes poolhogNote message in the leak report when set', async () => {
+        const mockLogger: Logger = { warn: jest.fn() };
+        attachPoolHog(mockPool, { threshold: 5000, logger: mockLogger });
+
+        const client = (await mockPool.connect()) as PoolClient & { poolhogNote?: (msg: string) => void };
+        
+        expect(typeof client.poolhogNote).toBe('function');
+        client.poolhogNote!('known long batch job');
+
+        jest.advanceTimersByTime(5001);
+
+        expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+        expect(mockLogger.warn).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({
+                message: 'known long batch job',
+            }),
+        );
+    });
+
+    // 8. Silently ignores poolhogNote called after client is released
+    test('silently ignores poolhogNote called after client is released', async () => {
+        const mockLogger: Logger = { warn: jest.fn() };
+        attachPoolHog(mockPool, { threshold: 5000, logger: mockLogger });
+
+        const client = (await mockPool.connect()) as PoolClient & { poolhogNote?: (msg: string) => void };
+        client.release();
+
+        expect(() => client.poolhogNote!('too late')).not.toThrow();
+
+        jest.advanceTimersByTime(6000);
+        expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+
+    // 9. Cleans up when the pool emits 'remove' for a checked-out client
+    test("cleans up when the pool emits 'remove' for a checked-out client", async () => {
+        const mockLogger: Logger = { warn: jest.fn() };
+        attachPoolHog(mockPool, { threshold: 5000, logger: mockLogger });
+
+        const client = await mockPool.connect();
+
+        // Simulate pool destroying the connection without app releasing it
+        mockPool.emit('remove', client);
+
+        // Advance past threshold
+        jest.advanceTimersByTime(6000);
+
+        expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+
+    // 10. Handles 'remove' event for an unknown/untracked client safely
+    test("handles 'remove' event for an unknown client without throwing", async () => {
+        const mockLogger: Logger = { warn: jest.fn() };
+        attachPoolHog(mockPool, { threshold: 5000, logger: mockLogger });
+
+        const unknownClient = { release: jest.fn() } as unknown as PoolClient;
+
+        expect(() => mockPool.emit('remove', unknownClient)).not.toThrow();
     });
 });
