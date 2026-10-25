@@ -5,10 +5,8 @@ import { createLeakTimer } from './timer.js';
 import { createReporter } from './reporter.js';
 
 export function attachPoolHog(pool: Pool, options: PoolhogOptions): Pool {
-    let hasWarnedCallbackUsage = false;
     const registry = createRegistry();
     const reporter = createReporter(options.logger);
-    const logger = options.logger ?? console;
 
     const timer = createLeakTimer(options.threshold, (client) => {
         const entry = registry.get(client);
@@ -24,45 +22,62 @@ export function attachPoolHog(pool: Pool, options: PoolhogOptions): Pool {
 
     const originalConnect = pool.connect.bind(pool);
 
-    pool.connect = (async (...args: any[]) => {
-        const lastArg = args[args.length - 1];
+    const setupTrackedClient = (client: PoolClient, stack: string) => {
+        const enhancedClient = client as PoolClient & { poolhogNote?: (msg: string) => void };
 
-        if (typeof lastArg === 'function') {
-            if (!hasWarnedCallbackUsage) {
-                logger.warn(
-                    'Poolhog warning: Callback-based pool.connect(cb) is not tracked for resource leaks. Use Promise/async-await style.',
-                );
-                hasWarnedCallbackUsage = true;
-            }
-            return (originalConnect as (cb: Function) => void)(lastArg);
-        }
-
-        const stack = new Error().stack ?? '';
-        const client: PoolClient & { poolhogNote?: (msg: string) => void } = await (
-            originalConnect as () => Promise<PoolClient>
-        )();
-
-        registry.track(client, {
+        registry.track(enhancedClient, {
             stack,
             checkoutTime: Date.now(),
         });
-        timer.schedule(client);
+        timer.schedule(enhancedClient);
 
-        client.poolhogNote = (message: string) => {
-            const activeEntry = registry.get(client);
+        enhancedClient.poolhogNote = (message: string) => {
+            const activeEntry = registry.get(enhancedClient);
             if (activeEntry) {
                 activeEntry.message = message;
             }
         };
 
-        const originalRelease = client.release;
-        client.release = function (...releaseArgs: Parameters<typeof originalRelease>) {
-            timer.cancel(client);
-            registry.untrack(client);
-            return originalRelease.apply(client, releaseArgs);
+        const originalRelease = enhancedClient.release;
+        enhancedClient.release = function (...releaseArgs: Parameters<typeof originalRelease>) {
+            timer.cancel(enhancedClient);
+            registry.untrack(enhancedClient);
+            return originalRelease.apply(enhancedClient, releaseArgs);
         };
 
-        return client;
+        return enhancedClient;
+    };
+
+    pool.connect = ((...args: any[]) => {
+        const lastArg = args[args.length - 1];
+        const stack = new Error().stack ?? '';
+
+        if (typeof lastArg === 'function') {
+            const userCallback = lastArg;
+            args[args.length - 1] = (err: any, client?: PoolClient, done?: Function) => {
+                if (err || !client) {
+                    return userCallback(err, client, done);
+                }
+
+                setupTrackedClient(client, stack);
+
+                const wrappedDone = done
+                    ? (...doneArgs: any[]) => {
+                          timer.cancel(client);
+                          registry.untrack(client);
+                          return done(...doneArgs);
+                      }
+                    : client.release.bind(client);
+
+                return userCallback(err, client, wrappedDone);
+            };
+
+            return (originalConnect as Function)(...args);
+        }
+
+        return (originalConnect as () => Promise<PoolClient>)().then((client) => {
+            return setupTrackedClient(client, stack);
+        });
     }) as typeof pool.connect;
 
     return pool;

@@ -90,26 +90,7 @@ describe('attachPoolHog', () => {
         expect(mockRealRelease).toHaveBeenCalledTimes(1);
     });
 
-    // 5. Callback passthrough emits a warning and delegates directly to originalConnect
-    test('emits a warning and delegates directly when callback style connect is used', async () => {
-        const mockLogger: Logger = { warn: jest.fn() };
-        const emitter = new EventEmitter();
-        const cbPool = Object.assign(emitter, {
-            connect: jest.fn((cb: any) => cb(null, mockClient)),
-        }) as unknown as Pool;
-
-        attachPoolHog(cbPool, { threshold: 5000, logger: mockLogger });
-
-        const callback = jest.fn();
-        (cbPool.connect as any)(callback);
-
-        expect(mockLogger.warn).toHaveBeenCalledTimes(1);
-        expect(mockLogger.warn).toHaveBeenCalledWith(
-            expect.stringMatching(/Callback-based pool.connect\(cb\) is not tracked/),
-        );
-    });
-
-    // 6. Double release calls underlying release twice and does not crash or double-cancel
+    // 5. Double release calls underlying release twice and does not crash or double-cancel
     test('handles double release gracefully without throwing or crashing', async () => {
         const mockLogger: Logger = { warn: jest.fn() };
         attachPoolHog(mockPool, { threshold: 5000, logger: mockLogger });
@@ -126,7 +107,7 @@ describe('attachPoolHog', () => {
         expect(mockLogger.warn).not.toHaveBeenCalled();
     });
 
-    // 7. Supports adding a poolhogNote to a checked-out client for reporting
+    // 6. Supports adding a poolhogNote to a checked-out client for reporting
     test('includes poolhogNote message in the leak report when set', async () => {
         const mockLogger: Logger = { warn: jest.fn() };
         attachPoolHog(mockPool, { threshold: 5000, logger: mockLogger });
@@ -147,7 +128,7 @@ describe('attachPoolHog', () => {
         );
     });
 
-    // 8. Silently ignores poolhogNote called after client is released
+    // 7. Silently ignores poolhogNote called after client is released
     test('silently ignores poolhogNote called after client is released', async () => {
         const mockLogger: Logger = { warn: jest.fn() };
         attachPoolHog(mockPool, { threshold: 5000, logger: mockLogger });
@@ -161,23 +142,21 @@ describe('attachPoolHog', () => {
         expect(mockLogger.warn).not.toHaveBeenCalled();
     });
 
-    // 9. Cleans up when the pool emits 'remove' for a checked-out client
+    // 8. Cleans up when the pool emits 'remove' for a checked-out client
     test("cleans up when the pool emits 'remove' for a checked-out client", async () => {
         const mockLogger: Logger = { warn: jest.fn() };
         attachPoolHog(mockPool, { threshold: 5000, logger: mockLogger });
 
         const client = await mockPool.connect();
 
-        // Simulate pool destroying the connection without app releasing it
         mockPool.emit('remove', client);
 
-        // Advance past threshold
         jest.advanceTimersByTime(6000);
 
         expect(mockLogger.warn).not.toHaveBeenCalled();
     });
 
-    // 10. Handles 'remove' event for an unknown/untracked client safely
+    // 9. Handles 'remove' event for an unknown/untracked client safely
     test("handles 'remove' event for an unknown client without throwing", async () => {
         const mockLogger: Logger = { warn: jest.fn() };
         attachPoolHog(mockPool, { threshold: 5000, logger: mockLogger });
@@ -185,5 +164,117 @@ describe('attachPoolHog', () => {
         const unknownClient = { release: jest.fn() } as unknown as PoolClient;
 
         expect(() => mockPool.emit('remove', unknownClient)).not.toThrow();
+    });
+
+    // 10. Callback-style connect: Tracks and reports a leak if never released
+    test('tracks callback-style connect and reports a leak if never released', async () => {
+        const mockLogger: Logger = { warn: jest.fn() };
+        
+        const emitter = new EventEmitter();
+        const cbPool = Object.assign(emitter, {
+            connect: jest.fn((cb: any) => {
+                cb(null, mockClient, mockRealRelease);
+            }),
+        }) as unknown as Pool & EventEmitter;
+
+        attachPoolHog(cbPool, { threshold: 5000, logger: mockLogger });
+
+        async function myApplicationCallbackCode() {
+            return new Promise((resolve) => {
+                (cbPool.connect as any)((err: any, client: any, done: any) => {
+                    resolve({ client, done });
+                });
+            });
+        }
+
+        await myApplicationCallbackCode();
+
+        jest.advanceTimersByTime(5001);
+
+        expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+        expect(mockLogger.warn).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({
+                stack: expect.stringMatching(/myApplicationCallbackCode/),
+            }),
+        );
+    });
+
+    // 11. Callback-style connect: Releasing via done() before threshold gives no report
+    test('does not report a leak if released via done() before threshold', async () => {
+        const mockLogger: Logger = { warn: jest.fn() };
+        const emitter = new EventEmitter();
+        const cbPool = Object.assign(emitter, {
+            connect: jest.fn((cb: any) => {
+                cb(null, mockClient, mockRealRelease);
+            }),
+        }) as unknown as Pool & EventEmitter;
+
+        attachPoolHog(cbPool, { threshold: 5000, logger: mockLogger });
+
+        await new Promise((resolve) => {
+            cbPool.connect((_err, _client, done) => {
+                done();
+                resolve(null);
+            });
+        });
+
+        jest.advanceTimersByTime(5001);
+
+        expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+
+// 12. Callback-style connect: Releasing via client.release() before threshold gives no report
+    test('does not report a leak if released via client.release() before threshold', async () => {
+        const mockLogger: Logger = { warn: jest.fn() };
+        const emitter = new EventEmitter();
+        const cbPool = Object.assign(emitter, {
+            connect: jest.fn((cb: any) => {
+                cb(null, mockClient, mockRealRelease);
+            }),
+        }) as unknown as Pool & EventEmitter;
+
+        attachPoolHog(cbPool, { threshold: 5000, logger: mockLogger });
+
+        await new Promise((resolve) => {
+            cbPool.connect((_err, client) => {
+                if (client) {
+                    client.release();
+                }
+                resolve(null);
+            });
+        });
+
+        jest.advanceTimersByTime(5001);
+
+        expect(mockLogger.warn).not.toHaveBeenCalled();
+    });
+    
+    // 13. Callback-style connect: Error callback tracks nothing and does not throw
+    test('handles error callback gracefully and tracks nothing', async () => {
+        const mockLogger: Logger = { warn: jest.fn() };
+        const emitter = new EventEmitter();
+        const cbPool = Object.assign(emitter, {
+            connect: jest.fn((cb: any) => {
+                cb(new Error('Connection failure'), undefined, undefined);
+            }),
+        }) as unknown as Pool & EventEmitter;
+
+        attachPoolHog(cbPool, { threshold: 5000, logger: mockLogger });
+
+        let callbackInvoked = false;
+        await new Promise((resolve) => {
+            cbPool.connect((err) => {
+                expect(err).toBeDefined();
+                callbackInvoked = true;
+                resolve(null);
+            });
+        });
+
+        expect(callbackInvoked).toBe(true);
+
+        jest.advanceTimersByTime(5001);
+
+        expect(mockLogger.warn).not.toHaveBeenCalled();
     });
 });
