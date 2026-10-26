@@ -15,10 +15,11 @@
   "files": [
     "dist"
   ],
-  "scripts": {
+"scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "tsc -p tsconfig.test.json --noEmit && jest"
+    "test": "tsc -p tsconfig.test.json --noEmit && jest",
+    "prebuild": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\""
   },
   "devDependencies": {
     "@jest/globals": "^30.5.2",
