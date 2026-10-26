@@ -1,6 +1,6 @@
 {
   "name": "poolhog",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "A connection-pool leak detector for Node.js, starting with Postgres (pg).",
   "license": "MIT",
   "keywords": [
@@ -41,7 +41,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "tsc -p tsconfig.test.json --noEmit && jest",
-    "prebuild": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\""
+    "prebuild": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "prepublishOnly": "npm test && npm run build"
   },
   "devDependencies": {
     "@jest/globals": "^30.5.2",
