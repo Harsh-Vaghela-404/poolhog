@@ -88,7 +88,9 @@ const client = await pool.connect();
 client.poolhogNote('nightly export, expected to run long');
 ```
 
-The note appears as `message` in the report's `meta`. Calling it on a connection that has already been released is silently ignored. In TypeScript the method isn't in `PoolClient`'s type yet, so you'll need a cast for now.
+The note appears as `message` in the report's `meta`. Calling it on a connection that has already been released is silently ignored.
+
+In TypeScript, importing poolhog adds an optional `poolhogNote` method to `pg`'s `PoolClient` type, so `client.poolhogNote?.('...')` type-checks without a cast. The method is optional because the type can't know which pool a client came from. A client from a pool you never attached poolhog to doesn't have it.
 
 ## Limitations
 

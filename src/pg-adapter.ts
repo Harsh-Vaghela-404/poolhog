@@ -23,29 +23,27 @@ export function attachPoolHog(pool: Pool, options: PoolhogOptions): Pool {
     const originalConnect = pool.connect.bind(pool);
 
     const setupTrackedClient = (client: PoolClient, stack: string) => {
-        const enhancedClient = client as PoolClient & { poolhogNote?: (msg: string) => void };
-
-        registry.track(enhancedClient, {
+        registry.track(client, {
             stack,
             checkoutTime: Date.now(),
         });
-        timer.schedule(enhancedClient);
+        timer.schedule(client);
 
-        enhancedClient.poolhogNote = (message: string) => {
-            const activeEntry = registry.get(enhancedClient);
+        client.poolhogNote = (message: string) => {
+            const activeEntry = registry.get(client);
             if (activeEntry) {
                 activeEntry.message = message;
             }
         };
 
-        const originalRelease = enhancedClient.release;
-        enhancedClient.release = function (...releaseArgs: Parameters<typeof originalRelease>) {
-            timer.cancel(enhancedClient);
-            registry.untrack(enhancedClient);
-            return originalRelease.apply(enhancedClient, releaseArgs);
+        const originalRelease = client.release;
+        client.release = function (...releaseArgs: Parameters<typeof originalRelease>) {
+            timer.cancel(client);
+            registry.untrack(client);
+            return originalRelease.apply(client, releaseArgs);
         };
 
-        return enhancedClient;
+        return client;
     };
 
     pool.connect = ((...args: any[]) => {

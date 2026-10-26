@@ -112,10 +112,10 @@ describe('attachPoolHog', () => {
         const mockLogger: Logger = { warn: jest.fn() };
         attachPoolHog(mockPool, { threshold: 5000, logger: mockLogger });
 
-        const client = (await mockPool.connect()) as PoolClient & { poolhogNote?: (msg: string) => void };
+        const client = await mockPool.connect();
         
         expect(typeof client.poolhogNote).toBe('function');
-        client.poolhogNote!('known long batch job');
+        client.poolhogNote?.('known long batch job');
 
         jest.advanceTimersByTime(5001);
 
@@ -133,9 +133,10 @@ describe('attachPoolHog', () => {
         const mockLogger: Logger = { warn: jest.fn() };
         attachPoolHog(mockPool, { threshold: 5000, logger: mockLogger });
 
-        const client = (await mockPool.connect()) as PoolClient & { poolhogNote?: (msg: string) => void };
+        const client = await mockPool.connect();
         client.release();
 
+        expect(typeof client.poolhogNote).toBe('function');
         expect(() => client.poolhogNote!('too late')).not.toThrow();
 
         jest.advanceTimersByTime(6000);
