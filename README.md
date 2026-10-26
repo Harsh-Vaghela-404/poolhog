@@ -1,5 +1,7 @@
 # poolhog
 
+[![npm version](https://img.shields.io/npm/v/poolhog)](https://www.npmjs.com/package/poolhog) [![license](https://img.shields.io/npm/l/poolhog)](LICENSE)
+
 Find the code that is holding your Postgres connections in Node.js.
 
 Poolhog watches a [`pg`](https://node-postgres.com) connection pool. When a connection is held longer than you expect, it logs the stack trace from the moment that connection was checked out, so you can see which line of your app is responsible. It is a connection leak detector for node-postgres.
@@ -30,7 +32,7 @@ Those errors have many causes. Poolhog helps with one of them: code that takes a
 
 ## Quick start
 
-Poolhog is not published to npm yet (see [Install](#install)). Once it is:
+Install it next to `pg` (see [Requirements](#requirements)):
 
 ```sh
 npm install poolhog
@@ -111,18 +113,9 @@ flowchart LR
 
 If the query hangs, the release never happens, the timer runs out, and the report names the line that called `pool.query`.
 
-## Install
+## Requirements
 
 Poolhog needs `pg` 8.x already installed. `pg` is a peer dependency, so poolhog never ships its own copy. TypeScript users also need `@types/pg`. Poolhog is ESM-only.
-
-It is not on npm yet. Until it is, clone and build it:
-
-```sh
-git clone https://github.com/Harsh-Vaghela-404/poolhog.git
-cd poolhog
-npm install
-npm run build
-```
 
 ## Options
 
@@ -194,13 +187,15 @@ Poolhog exists because the same need keeps getting reinvented per ecosystem, and
 
 ## Status
 
-Pre-release (0.0.1). The `pg` adapter is built and tested, and has been run against a real Postgres. Not yet on npm.
+Version 0.1.0, [on npm](https://www.npmjs.com/package/poolhog). It is pre-1.0, so the API may still change. The `pg` adapter is built and tested, and has been run against a real Postgres.
 
 Possible later, none of it scheduled: a live UI, a global patch (no per-pool setup), per-checkout thresholds, other drivers (MySQL, for example) and a Go port.
 
 ## Development
 
 ```sh
+git clone https://github.com/Harsh-Vaghela-404/poolhog.git
+cd poolhog
 npm install
 npm test        # type-checks src/ and tests/, then runs Jest
 npm run build   # compiles src/ to dist/
