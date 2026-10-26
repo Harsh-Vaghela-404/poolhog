@@ -57,40 +57,13 @@ That is all. Use your pool as you did before. Anything held past the threshold i
 
 Poolhog sits between your code and the pool. It records where each connection was checked out, and starts a timer. If the connection comes back in time, the timer is cancelled. If not, you get a report.
 
-```mermaid
-flowchart LR
-    A["Your code calls pool.connect or pool.query"] --> B["Poolhog saves the stack trace"]
-    B --> C["Poolhog starts a timer<br/>(your threshold)"]
-    C --> D{"Connection released<br/>before the timer ends?"}
-    D -->|Yes| E["Timer cancelled.<br/>Nothing is logged."]
-    D -->|No| F["Poolhog logs a leak report<br/>with the saved stack trace"]
-```
+![Flow: your code calls pool.connect or pool.query, poolhog saves the stack trace and starts a timer. If the connection is released before the timer ends, nothing is logged. If not, poolhog logs a leak report with the saved stack trace.](https://raw.githubusercontent.com/Harsh-Vaghela-404/poolhog/main/assets/how-it-works-flow.png)
 
 In more detail, for one connection:
 
-```mermaid
-sequenceDiagram
-    participant App as Your code
-    participant PH as Poolhog
-    participant Pool as pg Pool
-    participant Log as Your logger
+![Sequence diagram of one connection between your code, poolhog, the pg Pool and your logger. If the client is released before the threshold, poolhog cancels the timer. If it is held past the threshold, poolhog calls warn on your logger with the saved stack trace.](https://raw.githubusercontent.com/Harsh-Vaghela-404/poolhog/main/assets/how-it-works-sequence.png)
 
-    App->>PH: pool.connect()
-    PH->>PH: save the stack trace (who asked)
-    PH->>Pool: connect()
-    Pool-->>PH: client
-    PH->>PH: start timer for this client
-    PH-->>App: client
-    alt released before the threshold
-        App->>PH: client.release()
-        PH->>PH: cancel timer, forget the checkout
-        PH->>Pool: release()
-    else held past the threshold
-        PH->>Log: warn("connection held for 10002ms", stack trace)
-    end
-```
-
-Poolhog replaces `connect` on the one pool you give it and wraps each client's `release`. Nothing else in your process is touched.
+Poolhog replaces `connect` on the one pool you give it and wraps each client's `release`. Nothing else in your process is touched. The diagram sources are in [`assets/`](assets/).
 
 ## What it covers
 
@@ -103,13 +76,7 @@ Poolhog replaces `connect` on the one pool you give it and wraps each client's `
 
 `pool.query()` checks a connection out and releases it for you, so you never hold a reference. A query that never finishes still holds a connection the whole time. Poolhog sees it, because `pool.query` gets its connection through `pool.connect` internally:
 
-```mermaid
-flowchart LR
-    A["pool.query('select ...')"] --> B["pg-pool calls pool.connect"]
-    B --> C["Poolhog tracks it<br/>like any other checkout"]
-    C --> D["pg-pool releases the connection<br/>when the query finishes"]
-    D --> E["Timer cancelled"]
-```
+![Flow: pool.query makes pg-pool call pool.connect, poolhog tracks it like any other checkout, pg-pool releases the connection when the query finishes, and the timer is cancelled.](https://raw.githubusercontent.com/Harsh-Vaghela-404/poolhog/main/assets/pool-query-flow.png)
 
 If the query hangs, the release never happens, the timer runs out, and the report names the line that called `pool.query`.
 

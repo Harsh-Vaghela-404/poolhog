@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant App as Your code
+    participant PH as Poolhog
+    participant Pool as pg Pool
+    participant Log as Your logger
+
+    App->>PH: pool.connect()
+    Note over PH: saves the stack trace
+    PH->>Pool: connect()
+    Pool-->>PH: client
+    Note over PH: starts a timer
+    PH-->>App: client
+    alt released before the threshold
+        App->>PH: client.release()
+        Note over PH: cancels the timer
+        PH->>Pool: release()
+    else held past the threshold
+        PH->>Log: warn("connection held for 10002ms", stack trace)
+    end

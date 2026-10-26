@@ -1,0 +1,6 @@
+flowchart LR
+    A["Your code calls pool.connect or pool.query"] --> B["Poolhog saves the stack trace"]
+    B --> C["Poolhog starts a timer<br/>(your threshold)"]
+    C --> D{"Connection released<br/>before the timer ends?"}
+    D -->|Yes| E["Timer cancelled.<br/>Nothing is logged."]
+    D -->|No| F["Poolhog logs a leak report<br/>with the saved stack trace"]

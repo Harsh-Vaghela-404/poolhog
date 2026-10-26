@@ -1,0 +1,5 @@
+flowchart LR
+    A["pool.query('select ...')"] --> B["pg-pool calls pool.connect"]
+    B --> C["Poolhog tracks it<br/>like any other checkout"]
+    C --> D["pg-pool releases the connection<br/>when the query finishes"]
+    D --> E["Timer cancelled"]
