@@ -18,7 +18,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "jest"
+    "test": "tsc -p tsconfig.test.json --noEmit && jest"
   },
   "devDependencies": {
     "@jest/globals": "^30.5.2",

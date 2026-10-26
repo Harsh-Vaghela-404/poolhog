@@ -132,7 +132,7 @@ Pre-release (0.0.1). The `pg` adapter is built and tested, and has been run agai
 
 ```sh
 npm install
-npm test        # Jest (use `npx tsc --noEmit` too, Jest doesn't type-check)
+npm test        # type-checks src/ and tests/, then runs Jest
 npm run build   # compiles src/ to dist/
 ```
 
