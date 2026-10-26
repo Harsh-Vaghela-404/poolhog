@@ -278,4 +278,16 @@ describe('attachPoolHog', () => {
 
         expect(mockLogger.warn).not.toHaveBeenCalled();
     });
+
+    // 14. Release cancels the pending timer
+    test('release cancels the pending leak timer', async () => {
+        const mockLogger: Logger = { warn: jest.fn() };
+        attachPoolHog(mockPool, { threshold: 5000, logger: mockLogger });
+
+        const client = await mockPool.connect();
+        expect(jest.getTimerCount()).toBe(1);
+
+        client.release();
+        expect(jest.getTimerCount()).toBe(0);
+    });
 });

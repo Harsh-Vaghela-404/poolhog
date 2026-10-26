@@ -15,11 +15,13 @@ export function attachPoolHog(pool: Pool, options: PoolhogOptions): Pool {
         reporter.report(entry, Date.now() - entry.checkoutTime);
     });
 
-    pool.on('remove', (client: PoolClient) => {
+    const finishClient = (client: PoolClient) => {
         timer.cancel(client);
         registry.untrack(client);
-    });
+    };
 
+    pool.on('remove', finishClient);
+    
     const originalConnect = pool.connect.bind(pool);
 
     const setupTrackedClient = (client: PoolClient, stack: string) => {
@@ -38,8 +40,7 @@ export function attachPoolHog(pool: Pool, options: PoolhogOptions): Pool {
 
         const originalRelease = client.release;
         client.release = function (...releaseArgs: Parameters<typeof originalRelease>) {
-            timer.cancel(client);
-            registry.untrack(client);
+            finishClient(client);
             return originalRelease.apply(client, releaseArgs);
         };
 
@@ -61,8 +62,7 @@ export function attachPoolHog(pool: Pool, options: PoolhogOptions): Pool {
 
                 const wrappedDone = done
                     ? (...doneArgs: any[]) => {
-                          timer.cancel(client);
-                          registry.untrack(client);
+                          finishClient(client);
                           return done(...doneArgs);
                       }
                     : client.release.bind(client);
