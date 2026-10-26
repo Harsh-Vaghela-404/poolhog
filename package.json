@@ -3,6 +3,28 @@
   "version": "0.0.1",
   "description": "A connection-pool leak detector for Node.js, starting with Postgres (pg).",
   "license": "MIT",
+  "keywords": [
+    "postgres",
+    "postgresql",
+    "pg",
+    "node-postgres",
+    "pg-pool",
+    "connection-pool",
+    "connection-leak",
+    "leak-detection",
+    "pool-exhaustion",
+    "stack-trace",
+    "debugging",
+    "database"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Harsh-Vaghela-404/poolhog.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Harsh-Vaghela-404/poolhog/issues"
+  },
+  "homepage": "https://github.com/Harsh-Vaghela-404/poolhog#readme",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,7 +37,7 @@
   "files": [
     "dist"
   ],
-"scripts": {
+  "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "tsc -p tsconfig.test.json --noEmit && jest",
