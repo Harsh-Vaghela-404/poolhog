@@ -2,7 +2,7 @@ import { describe, expect, test, jest, beforeEach, afterEach } from '@jest/globa
 import { EventEmitter } from 'node:events';
 import { Pool, PoolClient } from 'pg';
 import { attachPoolHog } from '../src/pg-adapter.ts';
-import { Logger } from '../src/types.ts';
+import { LeakReport, Logger } from '../src/types.ts';
 
 describe('attachPoolHog', () => {
     let mockPool: Pool & EventEmitter;
@@ -289,5 +289,58 @@ describe('attachPoolHog', () => {
 
         client.release();
         expect(jest.getTimerCount()).toBe(0);
+    });
+    
+    // Stack trace pruning: Promise path
+    test('excludes poolhog internal wrapper from the captured stack trace (promise path)', async () => {
+        const mockLogger: Logger = { warn: jest.fn() };
+        attachPoolHog(mockPool, { threshold: 5000, logger: mockLogger });
+
+        async function myPromiseHelper() {
+            return await mockPool.connect();
+        }
+
+        await myPromiseHelper();
+        jest.advanceTimersByTime(5001);
+
+        expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+        const logArgs = (mockLogger.warn as jest.Mock).mock.calls[0][1] as LeakReport;
+        const stack: string = logArgs.stack;
+        const firstFrame = stack.split('\n').map(l => l.trim()).find(l => l.startsWith('at ')) ?? '';
+
+        expect(firstFrame).toMatch(/tests\/pg-adapter\.test\.ts/);
+        expect(firstFrame).not.toMatch(/src\/pg-adapter\.ts/);
+    });
+
+    // Stack trace pruning: Callback path
+    test('excludes poolhog internal wrapper from the captured stack trace (callback path)', async () => {
+        const mockLogger: Logger = { warn: jest.fn() };
+        const emitter = new EventEmitter();
+        const cbPool = Object.assign(emitter, {
+            connect: jest.fn((cb: any) => {
+                cb(null, mockClient, mockRealRelease);
+            }),
+        }) as unknown as Pool & EventEmitter;
+
+        attachPoolHog(cbPool, { threshold: 5000, logger: mockLogger });
+
+        async function myCallbackHelper() {
+            return new Promise((resolve) => {
+                (cbPool.connect as any)((_err: any, client: any, done: any) => {
+                    resolve({ client, done });
+                });
+            });
+        }
+
+        await myCallbackHelper();
+        jest.advanceTimersByTime(5001);
+
+        expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+        const logArgs = (mockLogger.warn as jest.Mock).mock.calls[0][1] as LeakReport;
+        const stack: string = logArgs.stack;
+        const firstFrame = stack.split('\n').map(l => l.trim()).find(l => l.startsWith('at ')) ?? '';
+
+        expect(firstFrame).toMatch(/tests\/pg-adapter\.test\.ts/);
+        expect(firstFrame).not.toMatch(/src\/pg-adapter\.ts/);
     });
 });

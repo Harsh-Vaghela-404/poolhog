@@ -21,7 +21,7 @@ export function attachPoolHog(pool: Pool, options: PoolhogOptions): Pool {
     };
 
     pool.on('remove', finishClient);
-    
+
     const originalConnect = pool.connect.bind(pool);
 
     const setupTrackedClient = (client: PoolClient, stack: string) => {
@@ -47,9 +47,11 @@ export function attachPoolHog(pool: Pool, options: PoolhogOptions): Pool {
         return client;
     };
 
-    pool.connect = ((...args: any[]) => {
+    const wrappedConnect = function (...args: any[]) {
         const lastArg = args[args.length - 1];
-        const stack = new Error().stack ?? '';
+        const target = {};
+        Error.captureStackTrace(target, wrappedConnect);
+        const stack = (target as { stack?: string }).stack ?? '';
 
         if (typeof lastArg === 'function') {
             const userCallback = lastArg;
@@ -76,7 +78,9 @@ export function attachPoolHog(pool: Pool, options: PoolhogOptions): Pool {
         return (originalConnect as () => Promise<PoolClient>)().then((client) => {
             return setupTrackedClient(client, stack);
         });
-    }) as typeof pool.connect;
+    };
+
+    pool.connect = wrappedConnect as typeof pool.connect;
 
     return pool;
 }
