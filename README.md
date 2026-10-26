@@ -187,7 +187,7 @@ Poolhog exists because the same need keeps getting reinvented per ecosystem, and
 
 ## Status
 
-Version 0.1.0, [on npm](https://www.npmjs.com/package/poolhog). It is pre-1.0, so the API may still change. The `pg` adapter is built and tested, and has been run against a real Postgres.
+Published [on npm](https://www.npmjs.com/package/poolhog). It is pre-1.0, so the API may still change. The `pg` adapter is built and tested, and has been run against a real Postgres.
 
 Possible later, none of it scheduled: a live UI, a global patch (no per-pool setup), per-checkout thresholds, other drivers (MySQL, for example) and a Go port.
 
