@@ -89,7 +89,7 @@ Poolhog needs `pg` 8.x already installed. `pg` is a peer dependency, so poolhog 
 | Option      | Required | What it does                                                                                       |
 | ----------- | -------- | -------------------------------------------------------------------------------------------------- |
 | `threshold` | yes      | Milliseconds a connection may be held before it is reported. There is no default.                  |
-| `logger`    | no       | Any object with a `warn(message, meta)` method (Winston, Pino, `console`). Defaults to `console`.  |
+| `logger`    | no       | Any object with a `warn(message, meta)` method. Winston and `console` work as they are; Pino needs a small wrapper (see below). Defaults to `console`. |
 
 **There is no default threshold, on purpose.** How long is too long depends on your workload. A reporting service running long analytical queries has a very different normal than a request-handling API, and a guessed default means false positives. A monitor that cries wolf gets turned off. Not calling `attachPoolHog` is how you keep detection off, the same way HikariCP's `leakDetectionThreshold` defaults to off.
 
@@ -101,6 +101,15 @@ meta:    { heldForMs: 10002, stack: "Error\n    at loadDashboard (...)\n    at .
 ```
 
 The stack starts at the code that asked for the connection. Poolhog's own frame is removed. For `pool.query()`, the first frame is `pg-pool`'s own `query`, with your code right below it.
+
+**Pino** takes its arguments the other way round (object first), so passing it directly logs the message and drops the stack trace. Wrap it:
+
+```js
+attachPoolHog(pool, {
+    threshold: 10_000,
+    logger: { warn: (message, meta) => pinoLogger.warn(meta, message) },
+});
+```
 
 Poolhog does not add an app or service name to the report. Your logger usually adds one already (a Pino or Winston child logger, for example), so poolhog doesn't guess it.
 
